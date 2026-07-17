@@ -1,0 +1,14 @@
+# 自动处理换行符：Windows 签出时 CRLF，WSL/Linux 保留 LF
+* text=auto eol=lf
+
+# 二进制文件不做换行符转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
