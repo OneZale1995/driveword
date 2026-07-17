@@ -271,7 +271,7 @@ export function SettingsPanel({
                     onValueChange={(v) => onUpdateSettings({ groupRepeat: v[0] })}
                   />
                   <p className="text-xs text-muted-foreground">
-                    第 1 轮学习（拼读+释义），第 2 轮复习，第 3 轮+测试回忆
+                    第 1 轮学习（音节拆解+释义），第 2 轮复习，第 3 轮+测试回忆
                   </p>
                 </div>
 
@@ -509,8 +509,8 @@ export function SettingsPanel({
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label className="text-sm font-semibold">逐字母拼读</Label>
-                <p className="text-xs text-muted-foreground">先读字母 A-B-C，再读单词</p>
+                <Label className="text-sm font-semibold">音节拆解</Label>
+                <p className="text-xs text-muted-foreground">按音节朗读 + 发音规则提示（元音/辅音/连读）</p>
               </div>
               <Switch
                 checked={settings.speakSpelling}

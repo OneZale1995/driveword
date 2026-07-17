@@ -10,6 +10,7 @@ import type {
   WordEntry,
 } from '@/types/word'
 import { mnemonics } from '@/data/mnemonics'
+import { buildSyllableSpeech } from '@/utils/phonetics'
 import { useSpeech } from './useSpeech'
 import { useProgress } from './useProgress'
 
@@ -44,13 +45,13 @@ const DEFAULT_SETTINGS: PlayerSettings = {
  *
  * 2. 记忆模式（memory）：
  *    将词库分成 N 个一组，每组重复 R 轮：
- *    - 第 0 轮（学习）：拼读 → 英文 → 中文（完整流程）
+ *    - 第 0 轮（学习）：音节拆解 → 英文 → 中文（完整流程）
  *    - 第 1 轮（复习）：英文 → 中文（快速过一遍）
  *    - 第 2+ 轮（测试）：英文 → 长停顿 → 中文（逼你回忆）
  *    每组结束后，随机抽 2-3 个之前学过的词进行间隔复习
  *
  * 3. 回忆模式（recall）：
- *    先读中文 → 沉默 N 秒（你回忆英文）→ 公布英文 + 拼读
+ *    先读中文 → 沉默 N 秒（你回忆英文）→ 公布英文 + 音节拆解
  *    纯听觉主动回忆，不开屏幕也能练
  *
  * 4. 顺序模式（sequential）：
@@ -134,7 +135,41 @@ export function useWordPlayer(wordbook: WordBook) {
   // 朗读序列构建器
   // ──────────────────────────────────────────────
 
-  /** 完整学习序列：英文 → 拼读 → 中文 → 例句 */
+  /**
+   * 音节拆解朗读：逐音节读 + 发音规则提示
+   * 替代原来的逐字母拼读（A-B-C），改为按音节朗读
+   * 例：abandon → "3个音节" → a → ban → don → "双写 N" → abandon
+   */
+  const speakSyllables = useCallback(
+    async (word: string) => {
+      if (stopFlagRef.current) return
+
+      const speechParts = buildSyllableSpeech(word)
+
+      for (const part of speechParts) {
+        if (stopFlagRef.current) return
+
+        const rate =
+          part.lang === 'en'
+            ? Math.max(0.5, settings.rate * 0.85) // 英文音节稍慢，听清细节
+            : settings.rate // 中文提示正常语速
+
+        try {
+          await speak(part.text, part.lang, { rate })
+        } catch {
+          return
+        }
+
+        if (stopFlagRef.current) return
+
+        // 音节间 / 提示后停顿
+        await delay(part.lang === 'en' ? 500 : 400)
+      }
+    },
+    [settings.rate, speak],
+  )
+
+  /** 完整学习序列：英文 → 音节拆解 → 中文 → 例句 */
   const playLearnSequence = useCallback(
     async (entry: WordEntry) => {
       if (stopFlagRef.current) return
@@ -154,14 +189,9 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
       await delay(settings.pauseBetween * 800)
 
-      // 拼读字母
+      // 音节拆解朗读
       if (settings.speakSpelling && !entry.word.includes(' ')) {
-        const spelled = entry.word.toUpperCase().split('').join(', ')
-        try {
-          await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
-        } catch {
-          return
-        }
+        await speakSyllables(entry.word)
         if (stopFlagRef.current) return
         await delay(settings.pauseBetween * 800)
       }
@@ -193,7 +223,7 @@ export function useWordPlayer(wordbook: WordBook) {
         await delay(settings.pauseBetween * 1000)
       }
     },
-    [settings, speak],
+    [settings, speak, speakSyllables],
   )
 
   /** 快速复习序列：英文 → 中文（不拼读，短停顿） */
@@ -249,7 +279,7 @@ export function useWordPlayer(wordbook: WordBook) {
     [settings, speak],
   )
 
-  /** 回忆序列：中文 → 沉默 N 秒 → 英文 → 拼读 */
+  /** 回忆序列：中文 → 沉默 N 秒 → 英文 → 音节拆解 */
   const playRecallSequence = useCallback(
     async (entry: WordEntry) => {
       if (stopFlagRef.current) return
@@ -276,21 +306,16 @@ export function useWordPlayer(wordbook: WordBook) {
       }
       if (stopFlagRef.current) return
 
-      // 4. 拼读字母
+      // 4. 音节拆解朗读
       if (settings.speakSpelling && !entry.word.includes(' ')) {
         await delay(500)
         if (stopFlagRef.current) return
-        const spelled = entry.word.toUpperCase().split('').join(', ')
-        try {
-          await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
-        } catch {
-          return
-        }
+        await speakSyllables(entry.word)
         if (stopFlagRef.current) return
       }
       await delay(settings.pauseBetween * 1000)
     },
-    [settings, speak],
+    [settings, speak, speakSyllables],
   )
 
   // ──────────────────────────────────────────────
@@ -307,7 +332,7 @@ export function useWordPlayer(wordbook: WordBook) {
   )
 
   /**
-   * SRS 新词学习序列（0→1）：拼读 → 单词 → 翻译 → 记忆口诀
+   * SRS 新词学习序列（0→1）：单词 → 音节拆解 → 翻译 → 记忆口诀
    * 完整学习流程，帮助建立初始记忆
    */
   const playSrsLearnSequence = useCallback(
@@ -328,14 +353,9 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
       await delay(settings.pauseBetween * 800)
 
-      // 拼读字母
+      // 音节拆解朗读
       if (settings.speakSpelling && !entry.word.includes(' ')) {
-        const spelled = entry.word.toUpperCase().split('').join(', ')
-        try {
-          await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
-        } catch {
-          return
-        }
+        await speakSyllables(entry.word)
         if (stopFlagRef.current) return
         await delay(settings.pauseBetween * 800)
       }
@@ -385,7 +405,7 @@ export function useWordPlayer(wordbook: WordBook) {
         await delay(settings.pauseBetween * 1000)
       }
     },
-    [settings, speak, getMnemonic],
+    [settings, speak, getMnemonic, speakSyllables],
   )
 
   /**
@@ -1117,8 +1137,15 @@ export function useWordPlayer(wordbook: WordBook) {
       await speak(currentWord.word, 'en', { rate: settings.rate })
       await delay(settings.pauseBetween * 800)
       if (settings.speakSpelling && !currentWord.word.includes(' ')) {
-        const spelled = currentWord.word.toUpperCase().split('').join(', ')
-        await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
+        const parts = buildSyllableSpeech(currentWord.word)
+        for (const part of parts) {
+          await speak(part.text, part.lang, {
+            rate: part.lang === 'en'
+              ? Math.max(0.5, settings.rate * 0.85)
+              : settings.rate,
+          })
+          await delay(part.lang === 'en' ? 500 : 400)
+        }
         await delay(settings.pauseBetween * 800)
       }
       if (settings.speakTranslation && currentWord.translation) {

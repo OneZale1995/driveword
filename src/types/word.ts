@@ -91,7 +91,7 @@ export interface PlayerSettings {
   speakTranslation: boolean
   /** 朗读例句 */
   speakExample: boolean
-  /** 逐字母拼读单词 */
+  /** 音节拆解朗读（按音节读 + 发音规则提示） */
   speakSpelling: boolean
   /** 学习模式 */
   learnMode: LearnMode

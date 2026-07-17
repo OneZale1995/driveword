@@ -175,7 +175,7 @@ export function useSpeech() {
    * 朗读文本，返回 Promise，朗读结束 resolve
    *
    * 不再自动 cancel() —— 调用方负责在需要时调用 cancel()。
-   * 这样连续朗读（如拼读字母、重复单词）不会被中断。
+   * 这样连续朗读（如音节拆解、重复单词）不会被中断。
    */
   const speak = useCallback(
     (text: string, lang: 'en' | 'zh', options: SpeakOptions = {}): Promise<void> => {
