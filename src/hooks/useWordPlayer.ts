@@ -134,22 +134,10 @@ export function useWordPlayer(wordbook: WordBook) {
   // 朗读序列构建器
   // ──────────────────────────────────────────────
 
-  /** 完整学习序列：拼读 → 英文 → 中文 → 例句 */
+  /** 完整学习序列：英文 → 拼读 → 中文 → 例句 */
   const playLearnSequence = useCallback(
     async (entry: WordEntry) => {
       if (stopFlagRef.current) return
-
-      // 拼读字母
-      if (settings.speakSpelling && !entry.word.includes(' ')) {
-        const spelled = entry.word.toUpperCase().split('').join(', ')
-        try {
-          await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
-        } catch {
-          return
-        }
-        if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
-      }
 
       // 英文单词
       const repeatCount = Math.max(1, settings.repeat)
@@ -164,7 +152,19 @@ export function useWordPlayer(wordbook: WordBook) {
       }
 
       if (stopFlagRef.current) return
-      await delay(settings.pauseBetween * 1000)
+      await delay(settings.pauseBetween * 800)
+
+      // 拼读字母
+      if (settings.speakSpelling && !entry.word.includes(' ')) {
+        const spelled = entry.word.toUpperCase().split('').join(', ')
+        try {
+          await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
+        } catch {
+          return
+        }
+        if (stopFlagRef.current) return
+        await delay(settings.pauseBetween * 800)
+      }
 
       // 中文翻译
       if (settings.speakTranslation && entry.translation) {
@@ -249,7 +249,7 @@ export function useWordPlayer(wordbook: WordBook) {
     [settings, speak],
   )
 
-  /** 回忆序列：中文 → 沉默 N 秒 → 拼读 + 英文 */
+  /** 回忆序列：中文 → 沉默 N 秒 → 英文 → 拼读 */
   const playRecallSequence = useCallback(
     async (entry: WordEntry) => {
       if (stopFlagRef.current) return
@@ -268,8 +268,18 @@ export function useWordPlayer(wordbook: WordBook) {
       await delay(settings.recallPause * 1000)
       if (stopFlagRef.current) return
 
-      // 3. 公布答案：拼读
+      // 3. 公布答案：读英文单词
+      try {
+        await speak(entry.word, 'en', { rate: settings.rate })
+      } catch {
+        return
+      }
+      if (stopFlagRef.current) return
+
+      // 4. 拼读字母
       if (settings.speakSpelling && !entry.word.includes(' ')) {
+        await delay(500)
+        if (stopFlagRef.current) return
         const spelled = entry.word.toUpperCase().split('').join(', ')
         try {
           await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
@@ -277,16 +287,7 @@ export function useWordPlayer(wordbook: WordBook) {
           return
         }
         if (stopFlagRef.current) return
-        await delay(500)
       }
-
-      // 4. 读英文单词
-      try {
-        await speak(entry.word, 'en', { rate: settings.rate })
-      } catch {
-        return
-      }
-      if (stopFlagRef.current) return
       await delay(settings.pauseBetween * 1000)
     },
     [settings, speak],
@@ -313,18 +314,6 @@ export function useWordPlayer(wordbook: WordBook) {
     async (entry: WordEntry) => {
       if (stopFlagRef.current) return
 
-      // 拼读字母
-      if (settings.speakSpelling && !entry.word.includes(' ')) {
-        const spelled = entry.word.toUpperCase().split('').join(', ')
-        try {
-          await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
-        } catch {
-          return
-        }
-        if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
-      }
-
       // 英文单词（重复 wordRepeat 遍，每遍间 500ms）
       const wordRepeatCount = Math.max(1, settings.wordRepeat)
       for (let i = 0; i < wordRepeatCount; i++) {
@@ -337,7 +326,19 @@ export function useWordPlayer(wordbook: WordBook) {
         if (i < wordRepeatCount - 1) await delay(500)
       }
       if (stopFlagRef.current) return
-      await delay(settings.pauseBetween * 1000)
+      await delay(settings.pauseBetween * 800)
+
+      // 拼读字母
+      if (settings.speakSpelling && !entry.word.includes(' ')) {
+        const spelled = entry.word.toUpperCase().split('').join(', ')
+        try {
+          await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
+        } catch {
+          return
+        }
+        if (stopFlagRef.current) return
+        await delay(settings.pauseBetween * 800)
+      }
 
       // 中文翻译
       if (entry.translation) {
@@ -1113,12 +1114,13 @@ export function useWordPlayer(wordbook: WordBook) {
     const wasPlaying = isPlaying
     if (wasPlaying) pause()
     try {
+      await speak(currentWord.word, 'en', { rate: settings.rate })
+      await delay(settings.pauseBetween * 800)
       if (settings.speakSpelling && !currentWord.word.includes(' ')) {
         const spelled = currentWord.word.toUpperCase().split('').join(', ')
         await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
         await delay(settings.pauseBetween * 800)
       }
-      await speak(currentWord.word, 'en', { rate: settings.rate })
       if (settings.speakTranslation && currentWord.translation) {
         await speak(currentWord.translation, 'zh', { rate: settings.rate })
       }
