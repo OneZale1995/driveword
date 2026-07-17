@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Car, ListMusic, Moon, Sun, Brain, Ear, Play } from 'lucide-react'
+import { Car, ListMusic, Moon, Sun, Brain, Ear, Headphones, Play, Zap } from 'lucide-react'
 import './App.css'
 import { WordCard } from '@/components/WordCard'
 import { PlayerControls } from '@/components/PlayerControls'
@@ -21,8 +21,10 @@ import { useWordPlayer } from '@/hooks/useWordPlayer'
 import type { LearnMode } from '@/types/word'
 
 const MODE_LABELS: Record<LearnMode, { label: string; icon: typeof Brain }> = {
+  srs: { label: '间隔重复', icon: Zap },
   memory: { label: '记忆模式', icon: Brain },
   recall: { label: '回忆模式', icon: Ear },
+  blind: { label: '盲听模式', icon: Headphones },
   sequential: { label: '顺序模式', icon: Play },
 }
 
@@ -45,6 +47,8 @@ export default function App() {
     jumpTo,
     speakCurrent,
     updateSettings,
+    resetProgress,
+    getMnemonic,
   } = useWordPlayer(wordbook)
 
   // 深色模式：默认开启（开车护眼）
@@ -180,6 +184,7 @@ export default function App() {
               onSelectBook={handleSelectBook}
               settings={settings}
               onUpdateSettings={updateSettings}
+              onResetProgress={resetProgress}
             />
           </div>
         </div>
@@ -202,7 +207,11 @@ export default function App() {
                 <ModeIcon className="h-3 w-3" />
                 {modeInfo.label}
               </Badge>
-              {phaseInfo.totalGroups > 0 && isPlaying ? (
+              {phaseInfo.sessionStats ? (
+                <span>
+                  已学 {phaseInfo.sessionStats.learned} · 复习中 {phaseInfo.sessionStats.reviewing} · 已掌握 {phaseInfo.sessionStats.mastered}
+                </span>
+              ) : phaseInfo.totalGroups > 0 && isPlaying ? (
                 <span>
                   第 {phaseInfo.group} 组 · 第 {phaseInfo.round}/{phaseInfo.totalRounds} 轮
                 </span>
@@ -212,9 +221,18 @@ export default function App() {
                 </span>
               )}
             </span>
-            <span>{Math.round(progress)}%</span>
+            <span>
+              {phaseInfo.sessionStats
+                ? `${Math.round((phaseInfo.sessionStats.mastered / phaseInfo.sessionStats.total) * 100)}%`
+                : `${Math.round(progress)}%`}
+            </span>
           </div>
-          <Progress value={progress} className="h-1.5" />
+          <Progress
+            value={phaseInfo.sessionStats
+              ? (phaseInfo.sessionStats.learned / phaseInfo.sessionStats.total) * 100
+              : progress}
+            className="h-1.5"
+          />
         </div>
 
         {/* 单词卡片 */}
@@ -225,6 +243,7 @@ export default function App() {
           isPlaying={isPlaying}
           showExample={settings.speakExample}
           phaseInfo={phaseInfo}
+          mnemonic={currentWord ? getMnemonic(currentWord) : undefined}
           onSpeak={speakCurrent}
         />
 

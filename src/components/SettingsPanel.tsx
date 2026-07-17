@@ -6,7 +6,10 @@ import {
   ListOrdered,
   Brain,
   Ear,
+  Headphones,
   Play,
+  Zap,
+  RotateCcw,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,10 +34,17 @@ interface SettingsPanelProps {
   onSelectBook: (id: string) => void
   settings: PlayerSettings
   onUpdateSettings: (partial: Partial<PlayerSettings>) => void
+  onResetProgress?: () => void
   triggerClassName?: string
 }
 
 const LEARN_MODES: { value: LearnMode; label: string; desc: string; icon: typeof Brain }[] = [
+  {
+    value: 'srs',
+    label: '间隔重复(SRS)',
+    desc: '科学间隔重复+主动回忆+进度记忆',
+    icon: Zap,
+  },
   {
     value: 'memory',
     label: '记忆模式',
@@ -46,6 +56,12 @@ const LEARN_MODES: { value: LearnMode; label: string; desc: string; icon: typeof
     label: '回忆模式',
     desc: '先读中文 → 沉默回忆 → 公布英文',
     icon: Ear,
+  },
+  {
+    value: 'blind',
+    label: '盲听模式',
+    desc: '英文→沉默→中文，纯听觉训练听力',
+    icon: Headphones,
   },
   {
     value: 'sequential',
@@ -67,6 +83,7 @@ export function SettingsPanel({
   onSelectBook,
   settings,
   onUpdateSettings,
+  onResetProgress,
   triggerClassName,
 }: SettingsPanelProps) {
   return (
@@ -150,6 +167,64 @@ export function SettingsPanel({
               })}
             </div>
           </section>
+
+          {/* SRS 模式专属设置 */}
+          {settings.learnMode === 'srs' && (
+            <>
+              <Separator />
+              <section className="space-y-4">
+                <h3 className="text-sm font-semibold">SRS 间隔重复参数</h3>
+
+                {/* 每轮新词数 */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm">每轮新词数</Label>
+                    <Badge variant="secondary" className="tabular-nums">
+                      {settings.newWordsPerRound} 个/轮
+                    </Badge>
+                  </div>
+                  <Slider
+                    value={[settings.newWordsPerRound]}
+                    min={1}
+                    max={5}
+                    step={1}
+                    onValueChange={(v) => onUpdateSettings({ newWordsPerRound: v[0] })}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>少 1 个</span>
+                    <span>推荐 3 个</span>
+                    <span>多 5 个</span>
+                  </div>
+                  <p className="rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-600 dark:text-emerald-400">
+                    每轮学习 N 个新词，与到期复习词交错播放。进度自动保存，跨会话恢复。
+                  </p>
+                </div>
+
+                {/* 重置进度 */}
+                {onResetProgress && (
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm font-semibold">重置进度</Label>
+                      <p className="text-xs text-muted-foreground">清除所有单词的掌握度记录</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-destructive hover:text-destructive"
+                      onClick={() => {
+                        if (window.confirm('确定要重置所有学习进度吗？此操作不可撤销。')) {
+                          onResetProgress()
+                        }
+                      }}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      重置
+                    </Button>
+                  </div>
+                )}
+              </section>
+            </>
+          )}
 
           {/* 记忆模式专属设置 */}
           {settings.learnMode === 'memory' && (
@@ -250,6 +325,41 @@ export function SettingsPanel({
             </>
           )}
 
+          {/* 盲听模式专属设置 */}
+          {settings.learnMode === 'blind' && (
+            <>
+              <Separator />
+              <section className="space-y-4">
+                <h3 className="text-sm font-semibold">盲听模式参数</h3>
+
+                {/* 沉默时间（复用 recallPause） */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm">听后沉默时间</Label>
+                    <Badge variant="secondary" className="tabular-nums">
+                      {settings.recallPause.toFixed(1)}s
+                    </Badge>
+                  </div>
+                  <Slider
+                    value={[settings.recallPause]}
+                    min={2}
+                    max={10}
+                    step={0.5}
+                    onValueChange={(v) => onUpdateSettings({ recallPause: v[0] })}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>快 2s</span>
+                    <span>推荐 4s</span>
+                    <span>慢 10s</span>
+                  </div>
+                  <p className="rounded-lg bg-blue-500/10 p-2 text-xs text-blue-600 dark:text-blue-400">
+                    先听英文正常语速，利用沉默时间理解含义，再听慢速英文和中文翻译确认。不拼读字母，专注听力。
+                  </p>
+                </div>
+              </section>
+            </>
+          )}
+
           {/* 顺序模式专属设置 */}
           {settings.learnMode === 'sequential' && (
             <>
@@ -344,6 +454,53 @@ export function SettingsPanel({
                 />
               </div>
             )}
+
+            {/* 单词重复次数（SRS 模式） */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">单词重复次数</Label>
+                <Badge variant="secondary" className="tabular-nums">
+                  {settings.wordRepeat} 次
+                </Badge>
+              </div>
+              <Slider
+                value={[settings.wordRepeat]}
+                min={1}
+                max={5}
+                step={1}
+                onValueChange={(v) => onUpdateSettings({ wordRepeat: v[0] })}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>1 次</span>
+                <span>推荐 2 次</span>
+                <span>5 次</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                SRS 学习与复习序列中，单词英文重复朗读的次数
+              </p>
+            </div>
+
+            {/* 例句重复次数 */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">例句重复次数</Label>
+                <Badge variant="secondary" className="tabular-nums">
+                  {settings.exampleRepeat} 次
+                </Badge>
+              </div>
+              <Slider
+                value={[settings.exampleRepeat]}
+                min={1}
+                max={3}
+                step={1}
+                onValueChange={(v) => onUpdateSettings({ exampleRepeat: v[0] })}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>1 次</span>
+                <span>推荐 1 次</span>
+                <span>3 次</span>
+              </div>
+            </div>
           </section>
 
           <Separator />
@@ -388,7 +545,9 @@ export function SettingsPanel({
           <section className="rounded-lg bg-muted/50 p-4 text-xs text-muted-foreground">
             <p className="font-medium text-foreground">学习建议</p>
             <ul className="mt-2 space-y-1">
-              <li>· 记忆模式效果最好：5词一组，3轮重复，自动复习</li>
+              <li>· SRS 间隔重复效果最好：科学间隔+主动回忆+进度记忆</li>
+              <li>· 盲听模式练听力：先听英文理解，再听中文确认</li>
+              <li>· 记忆模式：5词一组，3轮重复，自动复习</li>
               <li>· 回忆模式练主动回忆：听到中文先想英文，再听答案</li>
               <li>· 语速建议 0.8-1.0x，停顿 1.5-2.0s</li>
               <li>· 空格键暂停/继续，方向键切换单词</li>
