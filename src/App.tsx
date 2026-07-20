@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { wordbooks, getWordbookById } from '@/data/wordbooks'
 import { useWordPlayer } from '@/hooks/useWordPlayer'
+import { useWakeLock } from '@/hooks/useWakeLock'
 import type { LearnMode } from '@/types/word'
 
 const MODE_LABELS: Record<LearnMode, { label: string; icon: typeof Brain }> = {
@@ -50,6 +51,9 @@ export default function App() {
     resetProgress,
     getMnemonic,
   } = useWordPlayer(wordbook)
+
+  // 屏幕常亮：播放时保持屏幕不休眠 + 静音音频保持音频会话活跃（修复 iOS 屏幕变暗后停止播放）
+  useWakeLock(isPlaying)
 
   // 深色模式：默认开启（开车护眼）
   const [darkMode, setDarkMode] = useState(true)

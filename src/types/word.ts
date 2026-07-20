@@ -93,6 +93,8 @@ export interface PlayerSettings {
   speakExample: boolean
   /** 音节拆解朗读（按音节读 + 发音规则提示） */
   speakSpelling: boolean
+  /** 逐字母拼读（A-B-C-D 拆字母念） */
+  speakLetters: boolean
   /** 学习模式 */
   learnMode: LearnMode
   /** 顺序模式下的播放方式 */

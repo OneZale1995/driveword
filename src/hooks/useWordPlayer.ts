@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS: PlayerSettings = {
   speakTranslation: true,
   speakExample: true,
   speakSpelling: true,
+  speakLetters: true,
   learnMode: 'srs',
   playMode: 'order',
   repeat: 1,
@@ -169,6 +170,25 @@ export function useWordPlayer(wordbook: WordBook) {
     [settings.rate, speak],
   )
 
+  /**
+   * 逐字母拼读：A-B-C-D 逐个字母朗读
+   * 例：abandon → A, B, A, N, D, O, N
+   */
+  const speakLetterSpelling = useCallback(
+    async (word: string) => {
+      if (stopFlagRef.current) return
+      if (word.includes(' ')) return // 短语不拼字母
+
+      const spelled = word.toUpperCase().split('').join(', ')
+      try {
+        await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
+      } catch {
+        return
+      }
+    },
+    [settings.rate, speak],
+  )
+
   /** 完整学习序列：英文 → 音节拆解 → 中文 → 例句 */
   const playLearnSequence = useCallback(
     async (entry: WordEntry) => {
@@ -192,6 +212,13 @@ export function useWordPlayer(wordbook: WordBook) {
       // 音节拆解朗读
       if (settings.speakSpelling && !entry.word.includes(' ')) {
         await speakSyllables(entry.word)
+        if (stopFlagRef.current) return
+        await delay(settings.pauseBetween * 800)
+      }
+
+      // 逐字母拼读
+      if (settings.speakLetters && !entry.word.includes(' ')) {
+        await speakLetterSpelling(entry.word)
         if (stopFlagRef.current) return
         await delay(settings.pauseBetween * 800)
       }
@@ -223,7 +250,7 @@ export function useWordPlayer(wordbook: WordBook) {
         await delay(settings.pauseBetween * 1000)
       }
     },
-    [settings, speak, speakSyllables],
+    [settings, speak, speakSyllables, speakLetterSpelling],
   )
 
   /** 快速复习序列：英文 → 中文（不拼读，短停顿） */
@@ -313,9 +340,15 @@ export function useWordPlayer(wordbook: WordBook) {
         await speakSyllables(entry.word)
         if (stopFlagRef.current) return
       }
+      // 5. 逐字母拼读
+      if (settings.speakLetters && !entry.word.includes(' ')) {
+        if (stopFlagRef.current) return
+        await speakLetterSpelling(entry.word)
+        if (stopFlagRef.current) return
+      }
       await delay(settings.pauseBetween * 1000)
     },
-    [settings, speak, speakSyllables],
+    [settings, speak, speakSyllables, speakLetterSpelling],
   )
 
   // ──────────────────────────────────────────────
@@ -356,6 +389,13 @@ export function useWordPlayer(wordbook: WordBook) {
       // 音节拆解朗读
       if (settings.speakSpelling && !entry.word.includes(' ')) {
         await speakSyllables(entry.word)
+        if (stopFlagRef.current) return
+        await delay(settings.pauseBetween * 800)
+      }
+
+      // 逐字母拼读
+      if (settings.speakLetters && !entry.word.includes(' ')) {
+        await speakLetterSpelling(entry.word)
         if (stopFlagRef.current) return
         await delay(settings.pauseBetween * 800)
       }
@@ -405,7 +445,7 @@ export function useWordPlayer(wordbook: WordBook) {
         await delay(settings.pauseBetween * 1000)
       }
     },
-    [settings, speak, getMnemonic, speakSyllables],
+    [settings, speak, getMnemonic, speakSyllables, speakLetterSpelling],
   )
 
   /**
@@ -1146,6 +1186,11 @@ export function useWordPlayer(wordbook: WordBook) {
           })
           await delay(part.lang === 'en' ? 500 : 400)
         }
+        await delay(settings.pauseBetween * 800)
+      }
+      if (settings.speakLetters && !currentWord.word.includes(' ')) {
+        const spelled = currentWord.word.toUpperCase().split('').join(', ')
+        await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
         await delay(settings.pauseBetween * 800)
       }
       if (settings.speakTranslation && currentWord.translation) {

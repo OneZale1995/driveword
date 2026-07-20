@@ -519,6 +519,16 @@ export function SettingsPanel({
             </div>
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
+                <Label className="text-sm font-semibold">字母拼读</Label>
+                <p className="text-xs text-muted-foreground">逐字母朗读 A-B-C-D（拼写记忆）</p>
+              </div>
+              <Switch
+                checked={settings.speakLetters}
+                onCheckedChange={(v) => onUpdateSettings({ speakLetters: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
                 <Label className="text-sm font-semibold">朗读中文翻译</Label>
                 <p className="text-xs text-muted-foreground">英文读完后朗读中文释义</p>
               </div>
