@@ -223,6 +223,20 @@ export function useWordPlayer(wordbook: WordBook) {
         await delay(settings.pauseBetween * 800)
       }
 
+      // 英文单词强化朗读（拼读后巩固发音）
+      const reinforceRepeat = Math.max(1, settings.repeat)
+      for (let i = 0; i < reinforceRepeat; i++) {
+        if (stopFlagRef.current) return
+        try {
+          await speak(entry.word, 'en', { rate: settings.rate })
+        } catch {
+          return
+        }
+        if (i < reinforceRepeat - 1) await delay(500)
+      }
+      if (stopFlagRef.current) return
+      await delay(settings.pauseBetween * 800)
+
       // 中文翻译
       if (settings.speakTranslation && entry.translation) {
         try {
@@ -399,6 +413,20 @@ export function useWordPlayer(wordbook: WordBook) {
         if (stopFlagRef.current) return
         await delay(settings.pauseBetween * 800)
       }
+
+      // 英文单词强化朗读（拼读后巩固发音）
+      const reinforceRepeat = Math.max(1, settings.wordRepeat)
+      for (let i = 0; i < reinforceRepeat; i++) {
+        if (stopFlagRef.current) return
+        try {
+          await speak(entry.word, 'en', { rate: settings.rate })
+        } catch {
+          return
+        }
+        if (i < reinforceRepeat - 1) await delay(500)
+      }
+      if (stopFlagRef.current) return
+      await delay(settings.pauseBetween * 800)
 
       // 中文翻译
       if (entry.translation) {
@@ -1193,6 +1221,9 @@ export function useWordPlayer(wordbook: WordBook) {
         await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
         await delay(settings.pauseBetween * 800)
       }
+      // 英文单词强化朗读（拼读后巩固发音）
+      await speak(currentWord.word, 'en', { rate: settings.rate })
+      await delay(settings.pauseBetween * 800)
       if (settings.speakTranslation && currentWord.translation) {
         await speak(currentWord.translation, 'zh', { rate: settings.rate })
       }
