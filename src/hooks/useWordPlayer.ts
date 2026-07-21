@@ -97,6 +97,8 @@ export function useWordPlayer(wordbook: WordBook) {
   const learnedWordsRef = useRef<Set<number>>(new Set())
   // SRS: 追踪新词搜索起点
   const srsCursorRef = useRef(0)
+  // 记忆模式：用户手动切到下一组的标志
+  const groupAdvanceRef = useRef(false)
 
   const words = wordbook.words
   const currentWord: WordEntry | undefined = words[currentIndex]
@@ -919,9 +921,23 @@ export function useWordPlayer(wordbook: WordBook) {
           }
         }
 
-        // 下一组
-        groupStart = groupEnd
-        groupIndex++
+        // 判断是否需要进入下一组（用户手动触发才进，否则循环当前组）
+        if (!groupAdvanceRef.current) {
+          // 未手动切组：语音提示后循环当前组
+          try {
+            await speak(`第 ${groupIndex + 1} 组巩固完成，继续复习本组`, 'zh', { rate: settings.rate })
+          } catch {
+            // ignore
+          }
+          if (stopFlagRef.current) return
+          await delay(1000)
+          continue // 回到 while 顶部，重播同一组
+        } else {
+          // 用户手动切到下一组
+          groupAdvanceRef.current = false
+          groupStart = groupEnd
+          groupIndex++
+        }
 
         if (groupStart >= words.length) {
           // 全部学完，从头再来
@@ -1196,6 +1212,26 @@ export function useWordPlayer(wordbook: WordBook) {
     }, 150)
   }, [isPlaying, pause, settings.playMode, currentIndex, words.length, startPlayLoop])
 
+  /** 记忆模式：手动切换到下一组（循环当前组时由"下一组"按钮触发） */
+  const nextGroup = useCallback(() => {
+    const wasPlaying = isPlaying
+    pause()
+    const groupSize = Math.max(1, settings.groupSize)
+    const currentGroupStart = Math.floor(currentIndex / groupSize) * groupSize
+    let nextGroupStart = currentGroupStart + groupSize
+    if (nextGroupStart >= words.length) nextGroupStart = 0
+    setCurrentIndex(nextGroupStart)
+    if (wasPlaying) {
+      setTimeout(() => {
+        if (stopFlagRef.current) return
+        stopFlagRef.current = false
+        setIsPlaying(true)
+        groupAdvanceRef.current = false
+        startPlayLoop(nextGroupStart)
+      }, 150)
+    }
+  }, [isPlaying, pause, currentIndex, settings.groupSize, words.length, startPlayLoop])
+
   /** 手动朗读当前单词一次 */
   const speakCurrent = useCallback(async () => {
     if (!currentWord || !supported) return
@@ -1266,6 +1302,7 @@ export function useWordPlayer(wordbook: WordBook) {
     shuffleOrderRef.current = []
     learnedWordsRef.current.clear()
     srsCursorRef.current = 0
+    groupAdvanceRef.current = false
     setHasStarted(false)
     setPhaseInfo({
       phase: 'normal',
@@ -1300,6 +1337,7 @@ export function useWordPlayer(wordbook: WordBook) {
     togglePlay,
     next,
     prev,
+    nextGroup,
     jumpTo,
     speakCurrent,
     updateSettings,

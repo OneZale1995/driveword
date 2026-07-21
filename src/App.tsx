@@ -45,6 +45,7 @@ export default function App() {
     togglePlay,
     next,
     prev,
+    nextGroup,
     jumpTo,
     speakCurrent,
     updateSettings,
@@ -258,6 +259,8 @@ export default function App() {
           onNext={next}
           onPrev={prev}
           onSpeakCurrent={speakCurrent}
+          showNextGroup={settings.learnMode === 'memory'}
+          onNextGroup={nextGroup}
         />
 
         {/* 开始提示 */}
