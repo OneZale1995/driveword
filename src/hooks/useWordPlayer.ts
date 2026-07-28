@@ -73,7 +73,15 @@ export function useWordPlayer(wordbook: WordBook) {
     setEnVoice,
     setZhVoice,
   } = useSpeech()
-  const [settings, setSettings] = useState<PlayerSettings>(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<PlayerSettings>(() => {
+    try {
+      const raw = localStorage.getItem('driveword-settings')
+      if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_SETTINGS
+  })
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
@@ -1285,9 +1293,17 @@ export function useWordPlayer(wordbook: WordBook) {
     [isPlaying, pause, startPlayLoop],
   )
 
-  /** 更新设置 */
+  /** 更新设置（持久化到 localStorage，跨会话恢复） */
   const updateSettings = useCallback((partial: Partial<PlayerSettings>) => {
-    setSettings((prev) => ({ ...prev, ...partial }))
+    setSettings((prev) => {
+      const next = { ...prev, ...partial }
+      try {
+        localStorage.setItem('driveword-settings', JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
   }, [])
 
   /** 重置 SRS 进度（委托给 useProgress） */
@@ -1295,10 +1311,31 @@ export function useWordPlayer(wordbook: WordBook) {
     progress.reset()
   }, [progress])
 
-  // 切换词库时重置
+  // 持久化当前播放位置（按词库分别存储，切换词库互不干扰）
+  useEffect(() => {
+    try {
+      localStorage.setItem(`driveword-position-${wordbook.id}`, String(currentIndex))
+    } catch {
+      // ignore
+    }
+  }, [currentIndex, wordbook.id])
+
+  // 切换词库时：恢复本书上次播放位置，而非从头开始
   useEffect(() => {
     pause()
-    setCurrentIndex(0)
+    let savedIdx = 0
+    try {
+      const raw = localStorage.getItem(`driveword-position-${wordbook.id}`)
+      if (raw) {
+        const parsed = parseInt(raw, 10)
+        if (!Number.isNaN(parsed) && parsed >= 0 && parsed < wordbook.words.length) {
+          savedIdx = parsed
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setCurrentIndex(savedIdx)
     shuffleOrderRef.current = []
     learnedWordsRef.current.clear()
     srsCursorRef.current = 0

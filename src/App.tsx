@@ -30,7 +30,16 @@ const MODE_LABELS: Record<LearnMode, { label: string; icon: typeof Brain }> = {
 }
 
 export default function App() {
-  const [bookId, setBookId] = useState(wordbooks[0].id)
+  // 恢复上次选中的词库（持久化到 localStorage）
+  const [bookId, setBookId] = useState<string>(() => {
+    try {
+      const raw = localStorage.getItem('driveword-lastbook')
+      if (raw && getWordbookById(raw)) return raw
+    } catch {
+      // ignore
+    }
+    return wordbooks[0].id
+  })
   const wordbook = useMemo(() => getWordbookById(bookId)!, [bookId])
 
   const {
@@ -56,10 +65,32 @@ export default function App() {
   // 屏幕常亮：播放时保持屏幕不休眠 + 静音音频保持音频会话活跃（修复 iOS 屏幕变暗后停止播放）
   useWakeLock(isPlaying)
 
-  // 深色模式：默认开启（开车护眼）
-  const [darkMode, setDarkMode] = useState(true)
+  // 持久化选中的词库
+  useEffect(() => {
+    try {
+      localStorage.setItem('driveword-lastbook', bookId)
+    } catch {
+      // ignore
+    }
+  }, [bookId])
+
+  // 深色模式：默认开启（开车护眼），记忆用户选择
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem('driveword-darkmode')
+      if (raw !== null) return raw === '1'
+    } catch {
+      // ignore
+    }
+    return true
+  })
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
+    try {
+      localStorage.setItem('driveword-darkmode', darkMode ? '1' : '0')
+    } catch {
+      // ignore
+    }
   }, [darkMode])
 
   // 键盘快捷键
