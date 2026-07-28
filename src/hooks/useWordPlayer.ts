@@ -1155,6 +1155,7 @@ export function useWordPlayer(wordbook: WordBook) {
     }
 
     stopFlagRef.current = false
+    groupAdvanceRef.current = false
     setIsPlaying(true)
     setHasStarted(true)
     startPlayLoop(currentIndex)
@@ -1222,23 +1223,17 @@ export function useWordPlayer(wordbook: WordBook) {
 
   /** 记忆模式：手动切换到下一组（循环当前组时由"下一组"按钮触发） */
   const nextGroup = useCallback(() => {
-    const wasPlaying = isPlaying
-    pause()
     const groupSize = Math.max(1, settings.groupSize)
-    const currentGroupStart = Math.floor(currentIndex / groupSize) * groupSize
-    let nextGroupStart = currentGroupStart + groupSize
-    if (nextGroupStart >= words.length) nextGroupStart = 0
-    setCurrentIndex(nextGroupStart)
-    if (wasPlaying) {
-      setTimeout(() => {
-        if (stopFlagRef.current) return
-        stopFlagRef.current = false
-        setIsPlaying(true)
-        groupAdvanceRef.current = false
-        startPlayLoop(nextGroupStart)
-      }, 150)
+    // 通知正在运行的记忆循环：播完当前组后进入下一组（自然边界切组，避免并发）
+    groupAdvanceRef.current = true
+    // 暂停状态下没有运行中的循环，直接把当前位置跳到下一组起始词
+    if (!isPlaying) {
+      const currentGroupStart = Math.floor(currentIndex / groupSize) * groupSize
+      let nextGroupStart = currentGroupStart + groupSize
+      if (nextGroupStart >= words.length) nextGroupStart = 0
+      setCurrentIndex(nextGroupStart)
     }
-  }, [isPlaying, pause, currentIndex, settings.groupSize, words.length, startPlayLoop])
+  }, [isPlaying, currentIndex, settings.groupSize, words.length])
 
   /** 手动朗读当前单词一次 */
   const speakCurrent = useCallback(async () => {
