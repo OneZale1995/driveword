@@ -55,7 +55,9 @@ export default function App() {
     next,
     prev,
     nextGroup,
+    prevGroup,
     jumpTo,
+    words,
     speakCurrent,
     updateSettings,
     resetProgress,
@@ -165,7 +167,7 @@ export default function App() {
                 </DrawerHeader>
                 <div className="scrollbar-hide max-h-[55vh] overflow-y-auto px-4 pb-6">
                   <div className="grid gap-1">
-                    {wordbook.words.map((w, i) => (
+                    {words.map((w, i) => (
                       <button
                         key={i}
                         onClick={() => jumpTo(i)}
@@ -292,6 +294,7 @@ export default function App() {
           onSpeakCurrent={speakCurrent}
           showNextGroup={settings.learnMode === 'memory'}
           onNextGroup={nextGroup}
+          onPrevGroup={prevGroup}
         />
 
         {/* 开始提示 */}

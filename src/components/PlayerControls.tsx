@@ -1,4 +1,4 @@
-import { Pause, Play, SkipBack, SkipForward, Volume2, ChevronsRight } from 'lucide-react'
+import { Pause, Play, SkipBack, SkipForward, Volume2, ChevronsRight, ChevronsLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -10,6 +10,7 @@ interface PlayerControlsProps {
   onSpeakCurrent: () => void
   showNextGroup?: boolean
   onNextGroup?: () => void
+  onPrevGroup?: () => void
 }
 
 export function PlayerControls({
@@ -20,6 +21,7 @@ export function PlayerControls({
   onSpeakCurrent,
   showNextGroup = false,
   onNextGroup,
+  onPrevGroup,
 }: PlayerControlsProps) {
   return (
     <div className="flex flex-col items-center gap-3">
@@ -75,18 +77,34 @@ export function PlayerControls({
         </Button>
       </div>
 
-      {/* 下一组（仅记忆模式显示） */}
-      {showNextGroup && onNextGroup && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onNextGroup}
-          className="h-12 gap-1.5 rounded-full border-emerald-500/50 px-5 text-emerald-600 hover:bg-emerald-500/10 sm:h-14 dark:text-emerald-400"
-          aria-label="切换到下一组"
-        >
-          <ChevronsRight className="h-5 w-5" />
-          下一组
-        </Button>
+      {/* 上一组 / 下一组（仅记忆模式显示） */}
+      {showNextGroup && (onPrevGroup || onNextGroup) && (
+        <div className="flex items-center gap-3">
+          {onPrevGroup && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onPrevGroup}
+              className="h-12 gap-1.5 rounded-full border-emerald-500/50 px-5 text-emerald-600 hover:bg-emerald-500/10 sm:h-14 dark:text-emerald-400"
+              aria-label="切换到上一组"
+            >
+              <ChevronsLeft className="h-5 w-5" />
+              上一组
+            </Button>
+          )}
+          {onNextGroup && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onNextGroup}
+              className="h-12 gap-1.5 rounded-full border-emerald-500/50 px-5 text-emerald-600 hover:bg-emerald-500/10 sm:h-14 dark:text-emerald-400"
+              aria-label="切换到下一组"
+            >
+              <ChevronsRight className="h-5 w-5" />
+              下一组
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )

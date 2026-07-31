@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   Familiarity,
   PlayerSettings,
@@ -10,7 +10,7 @@ import type {
   WordEntry,
 } from '@/types/word'
 import { mnemonics } from '@/data/mnemonics'
-import { buildSyllableSpeech } from '@/utils/phonetics'
+import { buildSyllableSpeech, wordDifficulty } from '@/utils/phonetics'
 import { useSpeech } from './useSpeech'
 import { useProgress } from './useProgress'
 
@@ -31,6 +31,8 @@ const DEFAULT_SETTINGS: PlayerSettings = {
   recallPause: 4,
   reviewEnabled: true,
   newWordsPerRound: 5,
+  driveMode: false,
+  sortByDifficulty: true,
 }
 
 /**
@@ -83,6 +85,13 @@ export function useWordPlayer(wordbook: WordBook) {
     return DEFAULT_SETTINGS
   })
   const [currentIndex, setCurrentIndex] = useState(0)
+
+  // 驾驶模式：慢速强化（开车时单词过太快、听了像没听）
+  // 开启后自动降速、增加单词重复次数、拉长停顿与沉默时间
+  const effRate = settings.driveMode ? Math.min(settings.rate, 0.8) : settings.rate
+  const effWordRepeat = settings.driveMode ? Math.max(settings.wordRepeat, 4) : settings.wordRepeat
+  const effPause = settings.driveMode ? Math.max(settings.pauseBetween, 2.5) : settings.pauseBetween
+  const effRecall = settings.driveMode ? Math.max(settings.recallPause, 5) : settings.recallPause
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
 
@@ -105,10 +114,19 @@ export function useWordPlayer(wordbook: WordBook) {
   const learnedWordsRef = useRef<Set<number>>(new Set())
   // SRS: 追踪新词搜索起点
   const srsCursorRef = useRef(0)
-  // 记忆模式：用户手动切到下一组的标志
-  const groupAdvanceRef = useRef(false)
+  // 记忆模式：用户手动切组的标志（'next'=下一组，'prev'=上一组，null=循环当前组）
+  const groupNavRef = useRef<null | 'next' | 'prev'>(null)
 
-  const words = wordbook.words
+  // 词库单词（按难度由易到难排序，受 sortByDifficulty 开关控制）
+  const words = useMemo(() => {
+    if (!settings.sortByDifficulty) return wordbook.words
+    return [...wordbook.words].sort((a, b) => {
+      const da = wordDifficulty(a.word)
+      const db = wordDifficulty(b.word)
+      if (da !== db) return da - db
+      return a.word.toLowerCase() < b.word.toLowerCase() ? -1 : 1
+    })
+  }, [wordbook.words, settings.sortByDifficulty])
   const currentWord: WordEntry | undefined = words[currentIndex]
 
   /** 延迟工具 */
@@ -162,8 +180,8 @@ export function useWordPlayer(wordbook: WordBook) {
 
         const rate =
           part.lang === 'en'
-            ? Math.max(0.5, settings.rate * 0.85) // 英文音节稍慢，听清细节
-            : settings.rate // 中文提示正常语速
+            ? Math.max(0.5, effRate * 0.85) // 英文音节稍慢，听清细节
+            : effRate // 中文提示正常语速
 
         try {
           await speak(part.text, part.lang, { rate })
@@ -177,7 +195,7 @@ export function useWordPlayer(wordbook: WordBook) {
         await delay(part.lang === 'en' ? 500 : 400)
       }
     },
-    [settings.rate, speak],
+    [effRate, speak],
   )
 
   /**
@@ -191,12 +209,12 @@ export function useWordPlayer(wordbook: WordBook) {
 
       const spelled = word.toUpperCase().split('').join(', ')
       try {
-        await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
+        await speak(spelled, 'en', { rate: Math.max(0.5, effRate * 0.8) })
       } catch {
         return
       }
     },
-    [settings.rate, speak],
+    [effRate, speak],
   )
 
   /** 完整学习序列：英文 → 音节拆解 → 中文 → 例句 */
@@ -209,7 +227,7 @@ export function useWordPlayer(wordbook: WordBook) {
       for (let i = 0; i < repeatCount; i++) {
         if (stopFlagRef.current) return
         try {
-          await speak(entry.word, 'en', { rate: settings.rate })
+          await speak(entry.word, 'en', { rate: effRate })
         } catch {
           return
         }
@@ -217,20 +235,20 @@ export function useWordPlayer(wordbook: WordBook) {
       }
 
       if (stopFlagRef.current) return
-      await delay(settings.pauseBetween * 800)
+      await delay(effPause * 800)
 
       // 音节拆解朗读
       if (settings.speakSpelling && !entry.word.includes(' ')) {
         await speakSyllables(entry.word)
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
+        await delay(effPause * 800)
       }
 
       // 逐字母拼读
       if (settings.speakLetters && !entry.word.includes(' ')) {
         await speakLetterSpelling(entry.word)
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
+        await delay(effPause * 800)
       }
 
       // 英文单词强化朗读（拼读后巩固发音）
@@ -238,40 +256,40 @@ export function useWordPlayer(wordbook: WordBook) {
       for (let i = 0; i < reinforceRepeat; i++) {
         if (stopFlagRef.current) return
         try {
-          await speak(entry.word, 'en', { rate: settings.rate })
+          await speak(entry.word, 'en', { rate: effRate })
         } catch {
           return
         }
         if (i < reinforceRepeat - 1) await delay(500)
       }
       if (stopFlagRef.current) return
-      await delay(settings.pauseBetween * 800)
+      await delay(effPause * 800)
 
       // 中文翻译
       if (settings.speakTranslation && entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 1000)
+        await delay(effPause * 1000)
       }
 
       // 例句
       if (settings.speakExample && entry.example) {
         try {
-          await speak(entry.example, 'en', { rate: settings.rate })
+          await speak(entry.example, 'en', { rate: effRate })
           if (stopFlagRef.current) return
           await delay(800)
           if (entry.exampleCn && !stopFlagRef.current) {
-            await speak(entry.exampleCn, 'zh', { rate: settings.rate })
+            await speak(entry.exampleCn, 'zh', { rate: effRate })
           }
         } catch {
           return
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 1000)
+        await delay(effPause * 1000)
       }
     },
     [settings, speak, speakSyllables, speakLetterSpelling],
@@ -283,7 +301,7 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       try {
-        await speak(entry.word, 'en', { rate: settings.rate })
+        await speak(entry.word, 'en', { rate: effRate })
       } catch {
         return
       }
@@ -292,12 +310,12 @@ export function useWordPlayer(wordbook: WordBook) {
 
       if (settings.speakTranslation && entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
+        await delay(effPause * 800)
       }
     },
     [settings, speak],
@@ -309,22 +327,22 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       try {
-        await speak(entry.word, 'en', { rate: settings.rate })
+        await speak(entry.word, 'en', { rate: effRate })
       } catch {
         return
       }
       if (stopFlagRef.current) return
       // 长停顿 —— 给大脑回忆的时间
-      await delay(Math.max(2500, settings.pauseBetween * 1500))
+      await delay(Math.max(2500, effPause * 1500))
 
       if (settings.speakTranslation && entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
+        await delay(effPause * 800)
       }
     },
     [settings, speak],
@@ -338,7 +356,7 @@ export function useWordPlayer(wordbook: WordBook) {
       // 1. 先读中文
       if (entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
@@ -346,12 +364,12 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       // 2. 沉默 —— 核心回忆间隔
-      await delay(settings.recallPause * 1000)
+      await delay(effRecall * 1000)
       if (stopFlagRef.current) return
 
       // 3. 公布答案：读英文单词
       try {
-        await speak(entry.word, 'en', { rate: settings.rate })
+        await speak(entry.word, 'en', { rate: effRate })
       } catch {
         return
       }
@@ -370,7 +388,7 @@ export function useWordPlayer(wordbook: WordBook) {
         await speakLetterSpelling(entry.word)
         if (stopFlagRef.current) return
       }
-      await delay(settings.pauseBetween * 1000)
+      await delay(effPause * 1000)
     },
     [settings, speak, speakSyllables, speakLetterSpelling],
   )
@@ -397,68 +415,68 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       // 英文单词（重复 wordRepeat 遍，每遍间 500ms）
-      const wordRepeatCount = Math.max(1, settings.wordRepeat)
+      const wordRepeatCount = Math.max(1, effWordRepeat)
       for (let i = 0; i < wordRepeatCount; i++) {
         if (stopFlagRef.current) return
         try {
-          await speak(entry.word, 'en', { rate: settings.rate })
+          await speak(entry.word, 'en', { rate: effRate })
         } catch {
           return
         }
         if (i < wordRepeatCount - 1) await delay(500)
       }
       if (stopFlagRef.current) return
-      await delay(settings.pauseBetween * 800)
+      await delay(effPause * 800)
 
       // 音节拆解朗读
       if (settings.speakSpelling && !entry.word.includes(' ')) {
         await speakSyllables(entry.word)
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
+        await delay(effPause * 800)
       }
 
       // 逐字母拼读
       if (settings.speakLetters && !entry.word.includes(' ')) {
         await speakLetterSpelling(entry.word)
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
+        await delay(effPause * 800)
       }
 
       // 英文单词强化朗读（拼读后巩固发音）
-      const reinforceRepeat = Math.max(1, settings.wordRepeat)
+      const reinforceRepeat = Math.max(1, effWordRepeat)
       for (let i = 0; i < reinforceRepeat; i++) {
         if (stopFlagRef.current) return
         try {
-          await speak(entry.word, 'en', { rate: settings.rate })
+          await speak(entry.word, 'en', { rate: effRate })
         } catch {
           return
         }
         if (i < reinforceRepeat - 1) await delay(500)
       }
       if (stopFlagRef.current) return
-      await delay(settings.pauseBetween * 800)
+      await delay(effPause * 800)
 
       // 中文翻译
       if (entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 1000)
+        await delay(effPause * 1000)
       }
 
       // 记忆口诀（中文朗读）
       const mnemonic = getMnemonic(entry)
       if (mnemonic) {
         try {
-          await speak(mnemonic, 'zh', { rate: Math.max(0.7, settings.rate * 0.9) })
+          await speak(mnemonic, 'zh', { rate: Math.max(0.7, effRate * 0.9) })
         } catch {
           return
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 1200)
+        await delay(effPause * 1200)
       }
 
       // 例句朗读（受 speakExample 开关控制）
@@ -467,11 +485,11 @@ export function useWordPlayer(wordbook: WordBook) {
         for (let i = 0; i < exRepeatCount; i++) {
           if (stopFlagRef.current) return
           try {
-            await speak(entry.example, 'en', { rate: settings.rate })
+            await speak(entry.example, 'en', { rate: effRate })
             if (stopFlagRef.current) return
             await delay(800)
             if (entry.exampleCn && !stopFlagRef.current) {
-              await speak(entry.exampleCn, 'zh', { rate: settings.rate })
+              await speak(entry.exampleCn, 'zh', { rate: effRate })
             }
           } catch {
             return
@@ -480,7 +498,7 @@ export function useWordPlayer(wordbook: WordBook) {
           if (i < exRepeatCount - 1) await delay(500)
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 1000)
+        await delay(effPause * 1000)
       }
     },
     [settings, speak, getMnemonic, speakSyllables, speakLetterSpelling],
@@ -495,11 +513,11 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       // 英文单词（重复 wordRepeat 遍，每遍间 500ms）
-      const wordRepeatCount = Math.max(1, settings.wordRepeat)
+      const wordRepeatCount = Math.max(1, effWordRepeat)
       for (let i = 0; i < wordRepeatCount; i++) {
         if (stopFlagRef.current) return
         try {
-          await speak(entry.word, 'en', { rate: settings.rate })
+          await speak(entry.word, 'en', { rate: effRate })
         } catch {
           return
         }
@@ -510,12 +528,12 @@ export function useWordPlayer(wordbook: WordBook) {
 
       if (entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
+        await delay(effPause * 800)
       }
     },
     [settings, speak],
@@ -530,7 +548,7 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       try {
-        await speak(entry.word, 'en', { rate: settings.rate })
+        await speak(entry.word, 'en', { rate: effRate })
       } catch {
         return
       }
@@ -540,12 +558,12 @@ export function useWordPlayer(wordbook: WordBook) {
 
       if (entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 800)
+        await delay(effPause * 800)
       }
     },
     [settings, speak],
@@ -560,11 +578,11 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       // 1. 先读英文单词（重复 wordRepeat 遍）—— 听力训练：先听
-      const wordRepeatCount = Math.max(1, settings.wordRepeat)
+      const wordRepeatCount = Math.max(1, effWordRepeat)
       for (let i = 0; i < wordRepeatCount; i++) {
         if (stopFlagRef.current) return
         try {
-          await speak(entry.word, 'en', { rate: settings.rate })
+          await speak(entry.word, 'en', { rate: effRate })
         } catch {
           return
         }
@@ -579,7 +597,7 @@ export function useWordPlayer(wordbook: WordBook) {
       // 3. 读中文翻译（确认/纠偏）
       if (entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
@@ -588,7 +606,7 @@ export function useWordPlayer(wordbook: WordBook) {
 
       // 4. 再读一遍英文（确认发音）
       try {
-        await speak(entry.word, 'en', { rate: settings.rate })
+        await speak(entry.word, 'en', { rate: effRate })
       } catch {
         return
       }
@@ -599,7 +617,7 @@ export function useWordPlayer(wordbook: WordBook) {
         await delay(500)
         if (stopFlagRef.current) return
         try {
-          await speak(entry.example, 'en', { rate: settings.rate })
+          await speak(entry.example, 'en', { rate: effRate })
         } catch {
           return
         }
@@ -607,7 +625,7 @@ export function useWordPlayer(wordbook: WordBook) {
         if (entry.exampleCn) {
           await delay(300)
           try {
-            await speak(entry.exampleCn, 'zh', { rate: settings.rate })
+            await speak(entry.exampleCn, 'zh', { rate: effRate })
           } catch {
             return
           }
@@ -615,7 +633,7 @@ export function useWordPlayer(wordbook: WordBook) {
       }
 
       if (stopFlagRef.current) return
-      await delay(settings.pauseBetween * 1000)
+      await delay(effPause * 1000)
     },
     [settings, speak],
   )
@@ -629,7 +647,7 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       try {
-        await speak(entry.word, 'en', { rate: settings.rate })
+        await speak(entry.word, 'en', { rate: effRate })
       } catch {
         return
       }
@@ -638,12 +656,12 @@ export function useWordPlayer(wordbook: WordBook) {
 
       if (entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
         if (stopFlagRef.current) return
-        await delay(settings.pauseBetween * 600)
+        await delay(effPause * 600)
       }
     },
     [settings, speak],
@@ -728,7 +746,7 @@ export function useWordPlayer(wordbook: WordBook) {
             sessionStats: stats,
           })
           try {
-            await speak('全部单词已掌握！进入复习循环。', 'zh', { rate: settings.rate })
+            await speak('全部单词已掌握！进入复习循环。', 'zh', { rate: effRate })
           } catch {
             // ignore
           }
@@ -769,7 +787,7 @@ export function useWordPlayer(wordbook: WordBook) {
             sessionStats: stats,
           })
           try {
-            await speak('复习词尚未到期，稍后继续。', 'zh', { rate: settings.rate })
+            await speak('复习词尚未到期，稍后继续。', 'zh', { rate: effRate })
           } catch {
             // ignore
           }
@@ -810,7 +828,7 @@ export function useWordPlayer(wordbook: WordBook) {
         await delay(500)
       }
     },
-    [words, settings.newWordsPerRound, settings.rate, progress, speak, setSrsPhaseInfo, playSrsLearnSequence, playSrsReviewByFamiliarity],
+    [words, settings.newWordsPerRound, effRate, progress, speak, setSrsPhaseInfo, playSrsLearnSequence, playSrsReviewByFamiliarity],
   )
 
   // ──────────────────────────────────────────────
@@ -929,22 +947,32 @@ export function useWordPlayer(wordbook: WordBook) {
           }
         }
 
-        // 判断是否需要进入下一组（用户手动触发才进，否则循环当前组）
-        if (!groupAdvanceRef.current) {
+        // 判断是否需要切换组（用户手动触发才切，否则循环当前组）
+        if (groupNavRef.current === 'next') {
+          // 用户手动切到下一组
+          groupNavRef.current = null
+          groupStart = groupEnd
+          groupIndex++
+        } else if (groupNavRef.current === 'prev') {
+          // 用户手动切到上一组
+          groupNavRef.current = null
+          let prevStart = groupStart - groupSize
+          if (prevStart < 0) {
+            // 第一组往上回退到最后一组
+            prevStart = Math.floor((words.length - 1) / groupSize) * groupSize
+          }
+          groupStart = prevStart
+          groupIndex = Math.floor(prevStart / groupSize)
+        } else {
           // 未手动切组：语音提示后循环当前组
           try {
-            await speak(`第 ${groupIndex + 1} 组巩固完成，继续复习本组`, 'zh', { rate: settings.rate })
+            await speak(`第 ${groupIndex + 1} 组巩固完成，继续复习本组`, 'zh', { rate: effRate })
           } catch {
             // ignore
           }
           if (stopFlagRef.current) return
           await delay(1000)
           continue // 回到 while 顶部，重播同一组
-        } else {
-          // 用户手动切到下一组
-          groupAdvanceRef.current = false
-          groupStart = groupEnd
-          groupIndex++
         }
 
         if (groupStart >= words.length) {
@@ -972,11 +1000,11 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       // 1. 英文单词（正常语速，重复 wordRepeat 遍）
-      const wordRepeatCount = Math.max(1, settings.wordRepeat)
+      const wordRepeatCount = Math.max(1, effWordRepeat)
       for (let i = 0; i < wordRepeatCount; i++) {
         if (stopFlagRef.current) return
         try {
-          await speak(entry.word, 'en', { rate: settings.rate })
+          await speak(entry.word, 'en', { rate: effRate })
         } catch {
           return
         }
@@ -985,12 +1013,12 @@ export function useWordPlayer(wordbook: WordBook) {
       if (stopFlagRef.current) return
 
       // 2. 沉默 —— 用 recallPause 设置，让大脑理解含义
-      await delay(Math.max(2000, settings.recallPause * 1000))
+      await delay(Math.max(2000, effRecall * 1000))
       if (stopFlagRef.current) return
 
       // 3. 英文单词（稍慢，确认发音）—— rate * 0.85
       try {
-        await speak(entry.word, 'en', { rate: Math.max(0.5, settings.rate * 0.85) })
+        await speak(entry.word, 'en', { rate: Math.max(0.5, effRate * 0.85) })
       } catch {
         return
       }
@@ -1000,7 +1028,7 @@ export function useWordPlayer(wordbook: WordBook) {
       // 4. 读中文翻译
       if (entry.translation) {
         try {
-          await speak(entry.translation, 'zh', { rate: settings.rate })
+          await speak(entry.translation, 'zh', { rate: effRate })
         } catch {
           return
         }
@@ -1012,7 +1040,7 @@ export function useWordPlayer(wordbook: WordBook) {
         await delay(500)
         if (stopFlagRef.current) return
         try {
-          await speak(entry.example, 'en', { rate: settings.rate })
+          await speak(entry.example, 'en', { rate: effRate })
         } catch {
           return
         }
@@ -1020,7 +1048,7 @@ export function useWordPlayer(wordbook: WordBook) {
         if (entry.exampleCn) {
           await delay(300)
           try {
-            await speak(entry.exampleCn, 'zh', { rate: settings.rate })
+            await speak(entry.exampleCn, 'zh', { rate: effRate })
           } catch {
             return
           }
@@ -1028,7 +1056,7 @@ export function useWordPlayer(wordbook: WordBook) {
       }
 
       if (stopFlagRef.current) return
-      await delay(settings.pauseBetween * 1000)
+      await delay(effPause * 1000)
     },
     [settings, speak],
   )
@@ -1155,7 +1183,7 @@ export function useWordPlayer(wordbook: WordBook) {
     }
 
     stopFlagRef.current = false
-    groupAdvanceRef.current = false
+    groupNavRef.current = null
     setIsPlaying(true)
     setHasStarted(true)
     startPlayLoop(currentIndex)
@@ -1225,7 +1253,7 @@ export function useWordPlayer(wordbook: WordBook) {
   const nextGroup = useCallback(() => {
     const groupSize = Math.max(1, settings.groupSize)
     // 通知正在运行的记忆循环：播完当前组后进入下一组（自然边界切组，避免并发）
-    groupAdvanceRef.current = true
+    groupNavRef.current = 'next'
     // 暂停状态下没有运行中的循环，直接把当前位置跳到下一组起始词
     if (!isPlaying) {
       const currentGroupStart = Math.floor(currentIndex / groupSize) * groupSize
@@ -1235,36 +1263,53 @@ export function useWordPlayer(wordbook: WordBook) {
     }
   }, [isPlaying, currentIndex, settings.groupSize, words.length])
 
+  /** 记忆模式：手动切换到上一组（循环当前组时由"上一组"按钮触发） */
+  const prevGroup = useCallback(() => {
+    const groupSize = Math.max(1, settings.groupSize)
+    // 通知正在运行的记忆循环：播完当前组后回到上一组（自然边界切组，避免并发）
+    groupNavRef.current = 'prev'
+    // 暂停状态下没有运行中的循环，直接把当前位置跳到上一组起始词
+    if (!isPlaying) {
+      const currentGroupStart = Math.floor(currentIndex / groupSize) * groupSize
+      let prevGroupStart = currentGroupStart - groupSize
+      if (prevGroupStart < 0) {
+        // 第一组往上回退到最后一组
+        prevGroupStart = Math.floor((words.length - 1) / groupSize) * groupSize
+      }
+      setCurrentIndex(prevGroupStart)
+    }
+  }, [isPlaying, currentIndex, settings.groupSize, words.length])
+
   /** 手动朗读当前单词一次 */
   const speakCurrent = useCallback(async () => {
     if (!currentWord || !supported) return
     const wasPlaying = isPlaying
     if (wasPlaying) pause()
     try {
-      await speak(currentWord.word, 'en', { rate: settings.rate })
-      await delay(settings.pauseBetween * 800)
+      await speak(currentWord.word, 'en', { rate: effRate })
+      await delay(effPause * 800)
       if (settings.speakSpelling && !currentWord.word.includes(' ')) {
         const parts = buildSyllableSpeech(currentWord.word)
         for (const part of parts) {
           await speak(part.text, part.lang, {
             rate: part.lang === 'en'
-              ? Math.max(0.5, settings.rate * 0.85)
-              : settings.rate,
+              ? Math.max(0.5, effRate * 0.85)
+              : effRate,
           })
           await delay(part.lang === 'en' ? 500 : 400)
         }
-        await delay(settings.pauseBetween * 800)
+        await delay(effPause * 800)
       }
       if (settings.speakLetters && !currentWord.word.includes(' ')) {
         const spelled = currentWord.word.toUpperCase().split('').join(', ')
-        await speak(spelled, 'en', { rate: Math.max(0.5, settings.rate * 0.8) })
-        await delay(settings.pauseBetween * 800)
+        await speak(spelled, 'en', { rate: Math.max(0.5, effRate * 0.8) })
+        await delay(effPause * 800)
       }
       // 英文单词强化朗读（拼读后巩固发音）
-      await speak(currentWord.word, 'en', { rate: settings.rate })
-      await delay(settings.pauseBetween * 800)
+      await speak(currentWord.word, 'en', { rate: effRate })
+      await delay(effPause * 800)
       if (settings.speakTranslation && currentWord.translation) {
-        await speak(currentWord.translation, 'zh', { rate: settings.rate })
+        await speak(currentWord.translation, 'zh', { rate: effRate })
       }
     } catch {
       // 忽略
@@ -1334,7 +1379,7 @@ export function useWordPlayer(wordbook: WordBook) {
     shuffleOrderRef.current = []
     learnedWordsRef.current.clear()
     srsCursorRef.current = 0
-    groupAdvanceRef.current = false
+    groupNavRef.current = null
     setHasStarted(false)
     setPhaseInfo({
       phase: 'normal',
@@ -1362,6 +1407,7 @@ export function useWordPlayer(wordbook: WordBook) {
     hasStarted,
     settings,
     phaseInfo,
+    words,
     total: words.length,
     supported,
     play,
@@ -1370,6 +1416,7 @@ export function useWordPlayer(wordbook: WordBook) {
     next,
     prev,
     nextGroup,
+    prevGroup,
     jumpTo,
     speakCurrent,
     updateSettings,

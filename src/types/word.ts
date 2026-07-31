@@ -115,6 +115,10 @@ export interface PlayerSettings {
   reviewEnabled: boolean
   /** 每轮新词数（SRS 模式）1 - 5 */
   newWordsPerRound: number
+  /** 驾驶模式：慢速强化（开车时单词过太快、听了像没听，自动降速+加重复+拉长停顿） */
+  driveMode: boolean
+  /** 词库按难度由易到难排序（音节少、词短在前） */
+  sortByDifficulty: boolean
 }
 
 /** 播放阶段信息（传给 UI 显示） */

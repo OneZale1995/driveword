@@ -336,3 +336,17 @@ export function buildSyllableSpeech(
 
   return result
 }
+
+/**
+ * 单词难度评分（越小越简单），用于"由易到难"排序。
+ *
+ * 评分 = 音节数 * 100 + 字母数
+ * - 音节少的词更容易（如 cat=1 音节）
+ * - 词长短的更容易
+ * - 同分时按字母序排列，保证排序稳定
+ */
+export function wordDifficulty(word: string): number {
+  const letters = word.toLowerCase().replace(/[^a-z]/g, '')
+  const syllables = splitSyllables(letters)
+  return syllables.length * 100 + letters.length
+}

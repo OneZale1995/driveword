@@ -547,6 +547,26 @@ export function SettingsPanel({
                 onCheckedChange={(v) => onUpdateSettings({ speakExample: v })}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-semibold">驾驶模式（慢速强化）</Label>
+                <p className="text-xs text-muted-foreground">开车时单词过太快？自动降速、增加重复、拉长停顿</p>
+              </div>
+              <Switch
+                checked={settings.driveMode}
+                onCheckedChange={(v) => onUpdateSettings({ driveMode: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-semibold">由易到难排序</Label>
+                <p className="text-xs text-muted-foreground">词库按难度排列（音节少、词短在前）</p>
+              </div>
+              <Switch
+                checked={settings.sortByDifficulty}
+                onCheckedChange={(v) => onUpdateSettings({ sortByDifficulty: v })}
+              />
+            </div>
           </section>
 
           <Separator />
